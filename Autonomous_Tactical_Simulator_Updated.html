@@ -1,0 +1,2183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autonomous Tactical Missile Guidance & Interception Platform</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Three.js & OrbitControls CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- FontAwesome & Google Fonts -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0284c7',
+                            600: '#0369a1',
+                            900: '#0c4a6e',
+                        },
+                        hud: {
+                            bg: '#020617',
+                            panel: '#091322',
+                            panelDark: '#040a14',
+                            border: '#1e3a5f',
+                            borderBright: '#2a5282',
+                            green: '#00ff66',
+                            cyan: '#00f0ff',
+                            red: '#ff2a5f',
+                            yellow: '#ffcc00',
+                            dim: '#52789c'
+                        }
+                    },
+                    fontFamily: {
+                        orbitron: ['Orbitron', 'sans-serif'],
+                        mono: ['Share Tech Mono', 'monospace'],
+                        sans: ['Inter', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #f8fafc;
+            color: #0f172a;
+            user-select: none;
+        }
+
+        /* Scanlines Overlay for Dark Simulator HUD */
+        .scanlines {
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%, 
+                rgba(0, 0, 0, 0.25) 50%
+            );
+            background-size: 100% 3px;
+            pointer-events: none;
+        }
+
+        /* Tactical Dark HUD Panel Styles */
+        .hud-glass {
+            background: rgba(9, 19, 34, 0.95);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(30, 58, 95, 0.8);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
+        }
+
+        .hud-glass-header {
+            background: rgba(4, 10, 20, 0.95);
+            border-bottom: 1px solid rgba(30, 58, 95, 0.8);
+        }
+
+        .text-glow-cyan { text-shadow: 0 0 8px rgba(0, 240, 255, 0.6); }
+        .text-glow-green { text-shadow: 0 0 8px rgba(0, 255, 102, 0.6); }
+        .text-glow-red { text-shadow: 0 0 8px rgba(255, 42, 95, 0.6); }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .dark-scroll::-webkit-scrollbar-track {
+            background: #020617;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        .dark-scroll::-webkit-scrollbar-thumb {
+            background: #1e3a5f;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #0284c7;
+        }
+
+        /* Range Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: #091322;
+            height: 5px;
+            border-radius: 3px;
+            border: 1px solid #1e3a5f;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            height: 14px;
+            width: 8px;
+            border-radius: 2px;
+            background: #00f0ff;
+            cursor: pointer;
+            box-shadow: 0 0 6px #00f0ff;
+        }
+
+        /* WebGL Canvas forced 100% container fill */
+        #tab-simulator {
+            width: 100%;
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+        #tab-simulator > .flex-1.flex.flex-row {
+            width: 100%;
+            min-width: 0;
+            min-height: 0;
+        }
+        #workspace-column {
+            flex: 1 1 0%;
+            width: auto;
+            min-width: 0;
+            min-height: 0;
+        }
+        #viewport-area {
+            flex: 1 1 0%;
+            width: 100%;
+            min-width: 0;
+            min-height: 280px;
+            height: auto;
+        }
+        #bottom-dock {
+            flex: 0 0 auto;
+            min-height: 190px;
+            align-items: stretch;
+        }
+        #charts-card, #log-card { min-width: 0; min-height: 170px; }
+        #charts-body { height: 145px !important; min-height: 145px; }
+        #telemetry-chart { width: 100% !important; height: 100% !important; }
+        #canvas-2d-container { min-width: 0; min-height: 0; }
+        #radar-canvas-2d { width: 100%; height: 100%; }
+        @media (max-width: 900px) {
+            #bottom-dock { min-height: 220px; flex-direction: column; overflow-y: auto; }
+            #charts-card, #log-card { width: 100%; flex: 0 0 auto; }
+        }
+        #canvas-3d-container {
+            min-width: 0;
+            min-height: 0;
+        }
+        #canvas-3d-container canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body class="font-sans antialiased min-h-screen flex flex-col bg-slate-50 text-slate-900 overflow-x-hidden">
+
+    <!-- ===================================================================== -->
+    <!-- GLOBAL TOP COMMAND HEADER NAVIGATION BAR                              -->
+    <!-- ===================================================================== -->
+    <header class="h-14 bg-slate-900 border-b border-slate-800 text-white px-4 md:px-6 flex justify-between items-center z-40 shrink-0 sticky top-0 shadow-lg">
+        <!-- Logo & Branding -->
+        <div class="flex items-center space-x-3">
+            <div class="w-8 h-8 rounded-lg bg-sky-500/20 border border-sky-400/50 flex items-center justify-center text-sky-400">
+                <i class="fa-solid fa-crosshairs text-base animate-pulse"></i>
+            </div>
+            <div>
+                <div class="font-orbitron font-bold text-xs md:text-sm tracking-wider text-sky-400 flex items-center">
+                    AERO-TACTICAL GUIDANCE SUITE
+                </div>
+                <div class="text-[9px] font-mono text-slate-400 hidden sm:block">AUTONOMOUS HOMING & KINEMATICS ENGINE</div>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <nav class="flex items-center bg-slate-800/80 p-1 rounded-lg border border-slate-700/60 font-mono text-xs">
+            <button id="nav-btn-portal" class="nav-tab-btn px-3 py-1.5 rounded-md font-semibold transition flex items-center bg-sky-600 text-white shadow-sm" onclick="switchTab('portal')">
+                <i class="fa-solid fa-house mr-1.5"></i> <span class="hidden md:inline">Overview</span>
+            </button>
+            <button id="nav-btn-arsenal" class="nav-tab-btn px-3 py-1.5 rounded-md font-semibold transition flex items-center text-slate-300 hover:text-white hover:bg-slate-700/50 ml-1" onclick="switchTab('arsenal')">
+                <i class="fa-solid fa-book-bookmark mr-1.5 text-sky-400"></i> <span>Arsenal</span>
+            </button>
+            <button id="nav-btn-theory" class="nav-tab-btn px-3 py-1.5 rounded-md font-semibold transition flex items-center text-slate-300 hover:text-white hover:bg-slate-700/50 ml-1" onclick="switchTab('theory')">
+                <i class="fa-solid fa-atom mr-1.5 text-emerald-400"></i> <span class="hidden md:inline">Theory</span>
+            </button>
+            <button id="nav-btn-simulator" class="nav-tab-btn px-3 py-1.5 rounded-md font-semibold transition flex items-center text-slate-300 hover:text-white hover:bg-slate-700/50 ml-1" onclick="switchTab('simulator')">
+                <i class="fa-solid fa-cube mr-1.5 text-rose-400"></i> <span class="text-rose-300 font-bold">Simulator</span>
+            </button>
+        </nav>
+
+        <!-- Quick Status / CTA -->
+        <div class="hidden lg:flex items-center space-x-3 font-mono text-xs">
+            <div class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-slate-300 flex items-center space-x-2">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                <span>SYSTEM READY</span>
+            </div>
+            <button onclick="switchTab('simulator')" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded font-bold transition shadow-md shadow-rose-900/30 flex items-center">
+                <i class="fa-solid fa-rocket mr-1.5"></i> LAUNCH DEMO
+            </button>
+        </div>
+    </header>
+
+
+    <!-- ===================================================================== -->
+    <!-- TAB 1: LIGHT-THEME INTERACTIVE PORTAL (LANDING PAGE)                 -->
+    <!-- ===================================================================== -->
+    <section id="tab-portal" class="tab-content flex-1 bg-slate-50">
+        <!-- Hero Section -->
+        <div class="relative bg-gradient-to-b from-slate-900 via-slate-900 to-slate-800 text-white py-16 px-6 md:px-12 border-b border-slate-800 overflow-hidden">
+            <div class="absolute inset-0 opacity-10 bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none"></div>
+            
+            <div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12 items-center relative z-10">
+                <div class="lg:col-span-7 space-y-6">
+                    <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-400/30 text-sky-300 font-mono text-xs font-semibold">
+                        <i class="fa-solid fa-shield-halved"></i>
+                        <span>NEXT-GEN AUTONOMOUS GUIDANCE FRAMEWORK</span>
+                    </div>
+
+                    <h1 class="text-3xl md:text-5xl font-extrabold font-orbitron tracking-tight text-white leading-tight">
+                        Tactical Missile Guidance & Interception Platform
+                    </h1>
+
+                    <p class="text-slate-300 text-sm md:text-base leading-relaxed max-w-2xl">
+                        An integrated multi-domain simulation suite for evaluating homing loop kinematics, Proportional Navigation (PNG) laws, seeker noise mitigation, and high-G evasive maneuvers in real time.
+                    </p>
+
+                    <div class="flex flex-wrap gap-4 pt-2">
+                        <button onclick="switchTab('simulator')" class="px-6 py-3 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl shadow-lg shadow-sky-600/30 transition flex items-center text-sm">
+                            <i class="fa-solid fa-crosshairs mr-2"></i> Launch 3D Simulator
+                        </button>
+                        <button onclick="switchTab('arsenal')" class="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold rounded-xl transition flex items-center text-sm">
+                            <i class="fa-solid fa-book-open mr-2 text-sky-400"></i> Explore Missile Catalog
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Hero Graphic Card -->
+                <div class="lg:col-span-5 bg-slate-800/90 border border-slate-700 rounded-2xl p-6 shadow-2xl backdrop-blur-md space-y-4">
+                    <div class="flex justify-between items-center border-b border-slate-700 pb-3 font-mono text-xs">
+                        <span class="text-sky-400 font-bold"><i class="fa-solid fa-microchip mr-1.5"></i>CORE CAPABILITIES</span>
+                        <span class="text-emerald-400 font-bold">100 Hz PHYSICS</span>
+                    </div>
+
+                    <div class="space-y-3 font-mono text-xs">
+                        <div class="p-3 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center justify-between">
+                            <span class="text-slate-300"><i class="fa-solid fa-compass text-sky-400 mr-2"></i>Guidance Algorithm</span>
+                            <span class="text-sky-300 font-bold">Proportional Nav (PNG)</span>
+                        </div>
+                        <div class="p-3 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center justify-between">
+                            <span class="text-slate-300"><i class="fa-solid fa-satellite-dish text-emerald-400 mr-2"></i>Sensor Filter</span>
+                            <span class="text-emerald-300 font-bold">Alpha-Beta Low-Pass</span>
+                        </div>
+                        <div class="p-3 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center justify-between">
+                            <span class="text-slate-300"><i class="fa-solid fa-cubes text-rose-400 mr-2"></i>Viewport Rendering</span>
+                            <span class="text-rose-300 font-bold">Three.js + 2D Canvas</span>
+                        </div>
+                        <div class="p-3 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center justify-between">
+                            <span class="text-slate-300"><i class="fa-solid fa-shield-halved text-amber-400 mr-2"></i>Pre-loaded Database</span>
+                            <span class="text-amber-300 font-bold">12 Global Systems</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Defense Use Cases Section -->
+        <div class="max-w-6xl mx-auto py-16 px-6 md:px-12">
+            <div class="text-center space-y-3 mb-12">
+                <span class="font-mono text-xs font-bold text-sky-600 tracking-wider uppercase">APPLICATION DOMAINS</span>
+                <h2 class="text-2xl md:text-3xl font-bold font-orbitron text-slate-900">Designed for Defense Analytics & Research</h2>
+                <p class="text-slate-600 text-sm max-w-2xl mx-auto">Bridging theoretical aerospace dynamics with interactive 3D visual intelligence.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <!-- Use Case 1 -->
+                <div class="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition space-y-4">
+                    <div class="w-12 h-12 rounded-xl bg-sky-100 border border-sky-200 flex items-center justify-center text-sky-600">
+                        <i class="fa-solid fa-flask text-xl"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-slate-900">R&D Algorithm Testing</h3>
+                    <p class="text-slate-600 text-xs leading-relaxed">
+                        Benchmark new proportional navigation multipliers, airframe G-limits, and seeker low-pass alpha filter settings under noisy sensor environments.
+                    </p>
+                </div>
+
+                <!-- Use Case 2 -->
+                <div class="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition space-y-4">
+                    <div class="w-12 h-12 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600">
+                        <i class="fa-solid fa-user-graduate text-xl"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-slate-900">Operator Tactical Training</h3>
+                    <p class="text-slate-600 text-xs leading-relaxed">
+                        Provide commanders and non-technical personnel with intuitive visual understanding of No-Escape Zones ($NEZ$), motor burnout coasting, and terrain masking.
+                    </p>
+                </div>
+
+                <!-- Use Case 3 -->
+                <div class="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition space-y-4">
+                    <div class="w-12 h-12 rounded-xl bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600">
+                        <i class="fa-solid fa-shield-cat text-xl"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-slate-900">Threat & Evasion Analysis</h3>
+                    <p class="text-slate-600 text-xs leading-relaxed">
+                        Analyze how evasive target maneuvers—such as Sinusoidal S-Turns, High-G Break Turns, and Spiral Barrel Rolls—stress missile seeker tracking loops.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Capabilities Matrix -->
+        <div class="bg-slate-100 py-16 px-6 md:px-12 border-t border-slate-200">
+            <div class="max-w-6xl mx-auto space-y-12">
+                <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                    <div>
+                        <span class="font-mono text-xs font-bold text-sky-600 tracking-wider uppercase">FEATURE ARCHITECTURE</span>
+                        <h2 class="text-2xl md:text-3xl font-bold font-orbitron text-slate-900">Platform Features Matrix</h2>
+                    </div>
+                    <button onclick="switchTab('simulator')" class="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold font-mono transition flex items-center w-fit">
+                        <i class="fa-solid fa-play mr-2 text-rose-400"></i> Open Live Simulator
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 font-mono text-xs">
+                    <div class="bg-white p-6 rounded-xl border border-slate-200 space-y-2">
+                        <div class="text-sky-600 font-bold text-sm"><i class="fa-solid fa-gears mr-2"></i>True Kinematics</div>
+                        <p class="text-slate-600 font-sans text-xs">Integrates axial thrust acceleration, aerodynamic drag $F_d = \frac{1}{2}\rho v^2 C_d A$, atmospheric density decay, and propellant mass loss $\dot{m}$.</p>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-xl border border-slate-200 space-y-2">
+                        <div class="text-emerald-600 font-bold text-sm"><i class="fa-solid fa-wave-square mr-2"></i>Sensor Realism</div>
+                        <p class="text-slate-600 font-sans text-xs">Injects Gaussian seeker line-of-sight jitter and applies exponential smoothing to prevent erratic guidance commands.</p>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-xl border border-slate-200 space-y-2">
+                        <div class="text-rose-600 font-bold text-sm"><i class="fa-solid fa-eye mr-2"></i>Dual Viewports</div>
+                        <p class="text-slate-600 font-sans text-xs">Photorealistic 3D Volumetric Terrain rendering in WebGL paired with a high-contrast 2D Planar Scope with distance/altitude grid axes.</p>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-xl border border-slate-200 space-y-2">
+                        <div class="text-amber-600 font-bold text-sm"><i class="fa-solid fa-chart-line mr-2"></i>Live Telemetry</div>
+                        <p class="text-slate-600 font-sans text-xs">Real-time Chart.js telemetry charts tracking flight speed, G-force loading, and closing range alongside a tactical console log.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+    <!-- ===================================================================== -->
+    <!-- TAB 2: LIGHT-THEME MISSILE ARSENAL CATALOG                            -->
+    <!-- ===================================================================== -->
+    <section id="tab-arsenal" class="tab-content flex-1 bg-slate-50 hidden py-10 px-6 md:px-12">
+        <div class="max-w-7xl mx-auto space-y-8">
+            <!-- Header & Search Controls -->
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-slate-200 pb-8">
+                <div>
+                    <span class="font-mono text-xs font-bold text-sky-600 tracking-wider uppercase"><i class="fa-solid fa-shield-halved mr-1.5"></i>GLOBAL TACTICAL ARSENAL</span>
+                    <h2 class="text-2xl md:text-3xl font-bold font-orbitron text-slate-900 mt-1">Flagship Missile Systems Catalog</h2>
+                    <p class="text-slate-600 text-xs mt-1">Select any global missile system to inspect technical specifications, operational doctrine, and load specs directly into the simulator.</p>
+                </div>
+
+                <!-- Search Input -->
+                <div class="w-full md:w-80 relative font-mono text-xs">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                    <input type="text" id="arsenal-search-input" placeholder="Search system, country, role..." class="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-sky-500 shadow-sm text-slate-800">
+                </div>
+            </div>
+
+            <!-- Filter Chips -->
+            <div class="flex flex-wrap items-center gap-2 font-mono text-xs" id="category-filter-chips">
+                <button class="filter-chip px-3 py-1.5 rounded-lg border font-semibold bg-sky-600 text-white border-sky-600" data-category="all">All Systems (12)</button>
+                <button class="filter-chip px-3 py-1.5 rounded-lg border font-semibold bg-white text-slate-700 border-slate-300 hover:border-sky-400" data-category="ir">Short-Range IR</button>
+                <button class="filter-chip px-3 py-1.5 rounded-lg border font-semibold bg-white text-slate-700 border-slate-300 hover:border-sky-400" data-category="bvr">Beyond Visual Range (BVR)</button>
+                <button class="filter-chip px-3 py-1.5 rounded-lg border font-semibold bg-white text-slate-700 border-slate-300 hover:border-sky-400" data-category="sam">Surface-to-Air (SAM)</button>
+                <button class="filter-chip px-3 py-1.5 rounded-lg border font-semibold bg-white text-slate-700 border-slate-300 hover:border-sky-400" data-category="ramjet">Ramjet / Hypersonic</button>
+            </div>
+
+            <!-- Missile Cards Grid Container -->
+            <div id="arsenal-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Dynamic Injection via JavaScript -->
+            </div>
+        </div>
+    </section>
+
+
+    <!-- ===================================================================== -->
+    <!-- TAB 3: LIGHT-THEME GUIDANCE THEORY & PHYSICS                          -->
+    <!-- ===================================================================== -->
+    <section id="tab-theory" class="tab-content flex-1 bg-slate-50 hidden py-10 px-6 md:px-12">
+        <div class="max-w-5xl mx-auto space-y-10">
+            <div class="border-b border-slate-200 pb-6">
+                <span class="font-mono text-xs font-bold text-emerald-600 tracking-wider uppercase"><i class="fa-solid fa-graduation-cap mr-1.5"></i>MATHEMATICAL FOUNDATIONS</span>
+                <h2 class="text-2xl md:text-3xl font-bold font-orbitron text-slate-900 mt-1">Guidance Laws & Kinematics Theory</h2>
+                <p class="text-slate-600 text-xs mt-1">An intuitive and mathematical breakdown of proportional navigation, drag equations, and seeker noise mitigation.</p>
+            </div>
+
+            <!-- Theory Block 1: Proportional Navigation -->
+            <div class="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div class="flex items-center space-x-3 text-sky-600 font-bold font-orbitron text-lg">
+                    <i class="fa-solid fa-compass"></i>
+                    <h3>1. Proportional Navigation Guidance (PNG)</h3>
+                </div>
+                <p class="text-slate-700 text-xs leading-relaxed">
+                    Proportional Navigation is the universal guidance law used by modern homing missiles. Instead of heading directly at the target's current location (pure pursuit), PNG commands a lateral acceleration proportional to the rotational rate of the Line-of-Sight (LOS) angle.
+                </p>
+
+                <!-- Math Equation Box -->
+                <div class="bg-slate-900 text-sky-300 font-mono p-4 rounded-xl text-center text-sm md:text-base border border-slate-800">
+                    <span class="text-white font-bold">a<sub>c</sub></span> = N · V<sub>c</sub> · <span class="text-emerald-400">λ̇</span>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 font-mono text-xs pt-2">
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                        <span class="text-sky-600 font-bold">N (Nav Constant):</span> Typically tuned between 3.0 and 5.0 to ensure intercept convergence before fuel depletion.
+                    </div>
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                        <span class="text-sky-600 font-bold">V<sub>c</sub> (Closing Velocity):</span> The rate at which relative separation distance between missile and target is collapsing.
+                    </div>
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                        <span class="text-sky-600 font-bold">λ̇ (LOS Rate):</span> The angular rotation velocity of the line-of-sight vector measured by the onboard radar seeker.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Theory Block 2: Drag & Atmospheric Decay -->
+            <div class="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div class="flex items-center space-x-3 text-emerald-600 font-bold font-orbitron text-lg">
+                    <i class="fa-solid fa-wind"></i>
+                    <h3>2. Atmospheric Drag & Thrust Mass Decay</h3>
+                </div>
+                <p class="text-slate-700 text-xs leading-relaxed">
+                    Flight kinematics account for fluid drag forces and variable mass during motor burn. Air density drops exponentially with altitude according to the scale height model:
+                </p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
+                    <div class="bg-slate-900 text-emerald-300 p-4 rounded-xl text-center border border-slate-800">
+                        <div class="text-slate-400 text-[10px] mb-1">AERODYNAMIC DRAG FORCE</div>
+                        F<sub>d</sub> = ½ · ρ(y) · v² · C<sub>d</sub> · A
+                    </div>
+                    <div class="bg-slate-900 text-emerald-300 p-4 rounded-xl text-center border border-slate-800">
+                        <div class="text-slate-400 text-[10px] mb-1">ATMOSPHERIC DENSITY DECAY</div>
+                        ρ(y) = ρ₀ · e<sup>(-y / 8500)</sup>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Theory Block 3: Seeker Noise & Filtering -->
+            <div class="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div class="flex items-center space-x-3 text-rose-600 font-bold font-orbitron text-lg">
+                    <i class="fa-solid fa-satellite-dish"></i>
+                    <h3>3. Seeker Radar Jitter & Low-Pass Filtering</h3>
+                </div>
+                <p class="text-slate-700 text-xs leading-relaxed">
+                    Real radar seekers experience target glint and electronic noise. Unfiltered noise causes extreme derivative spikes in the LOS rate (λ̇), inducing violent steering commands that bleed kinetic energy. We apply exponential low-pass smoothing:
+                </p>
+
+                <div class="bg-slate-900 text-rose-300 font-mono p-4 rounded-xl text-center text-xs md:text-sm border border-slate-800">
+                    λ̇<sub>filtered</sub> = (α · λ̇<sub>raw</sub>) + (1 - α) · λ̇<sub>previous</sub>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+    <!-- ===================================================================== -->
+    <!-- TAB 4: DARK-THEME LIVE TACTICAL SIMULATOR ENGINE                      -->
+    <!-- ===================================================================== -->
+    <section id="tab-simulator" class="tab-content flex-1 bg-hud-bg hidden flex-col h-[calc(100vh-3.5rem)] overflow-hidden relative">
+        <!-- SIMULATOR TOP TOOLBAR BAR -->
+        <div class="h-10 bg-hud-panelDark border-b border-hud-border px-4 flex justify-between items-center z-30 shrink-0 font-mono text-xs">
+            <div class="flex items-center space-x-3">
+                <!-- VIEWPORT MODE SWITCHER -->
+                <div class="flex items-center bg-hud-bg border border-hud-border rounded p-0.5">
+                    <button id="view-mode-3d" class="px-2 py-0.5 rounded font-bold transition flex items-center bg-hud-cyan/20 text-hud-cyan border border-hud-cyan/50">
+                        <i class="fa-solid fa-cube mr-1"></i> 3D VOLUMETRIC
+                    </button>
+                    <button id="view-mode-2d" class="px-2 py-0.5 rounded font-bold transition flex items-center text-hud-dim hover:text-slate-200">
+                        <i class="fa-solid fa-radar mr-1"></i> 2D RADAR SCOPE
+                    </button>
+                </div>
+
+                <!-- OVERLAYS TOGGLE -->
+                <button id="btn-toggle-overlays" class="px-2 py-0.5 rounded font-bold transition flex items-center bg-hud-green/20 text-hud-green border border-hud-green/50 hover:bg-hud-green/30">
+                    <i class="fa-solid fa-eye mr-1"></i> OVERLAYS: ON
+                </button>
+
+                <!-- FULLSCREEN TOGGLE -->
+                <button id="btn-fullscreen" class="px-2 py-0.5 rounded font-bold transition flex items-center bg-hud-panel border border-hud-border text-slate-300 hover:text-hud-cyan">
+                    <i class="fa-solid fa-expand mr-1"></i> FULLSCREEN
+                </button>
+            </div>
+
+            <!-- SIMULATION TIMER & STATUS -->
+            <div class="flex items-center space-x-3">
+                <div>
+                    <span class="text-hud-dim text-[10px]">TIME:</span>
+                    <span id="hud-sim-time" class="font-bold text-hud-cyan text-glow-cyan ml-1">00:00.00</span>
+                </div>
+                <span id="status-badge" class="px-2 py-0.5 rounded font-bold text-[10px] bg-slate-800 text-slate-300 border border-slate-700 uppercase tracking-wider">
+                    READY
+                </span>
+            </div>
+        </div>
+
+        <!-- MAIN SIMULATOR WORKSPACE CONTAINER -->
+        <div class="flex-1 flex flex-row overflow-hidden relative">
+
+            <!-- LEFT COLUMN: CONTROLS SIDEBAR -->
+            <aside id="control-sidebar" class="w-80 h-full hud-glass flex flex-col z-20 shrink-0 border-r border-hud-border relative transition-all duration-200">
+                <!-- SIDEBAR HEADER -->
+                <div class="hud-glass-header px-3.5 py-2 border-b border-hud-border flex justify-between items-center shrink-0 font-mono">
+                    <span class="font-orbitron font-bold text-hud-cyan flex items-center text-xs">
+                        <i class="fa-solid fa-sliders mr-2"></i> PARAMETER CONTROLS
+                    </span>
+                    <div class="flex items-center space-x-2">
+                        <button id="reset-defaults-btn" title="Reset to Defaults" class="text-hud-dim hover:text-hud-cyan transition">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </button>
+                        <button id="btn-toggle-sidebar" class="bg-hud-panel border border-hud-border text-hud-cyan px-1.5 py-0.5 rounded hover:bg-hud-cyan/20">
+                            <i id="sidebar-toggle-icon" class="fa-solid fa-chevron-left"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- SCROLLABLE SIDEBAR CONTENT -->
+                <div id="sidebar-content" class="flex-1 overflow-y-auto p-3 space-y-3 pb-28 font-mono text-xs dark-scroll">
+                    <!-- LAUNCH CONTROLS -->
+                    <div class="bg-hud-panel/90 border border-hud-border rounded-lg p-2.5 space-y-2">
+                        <div class="flex justify-between items-center font-bold text-hud-dim text-[10px]">
+                            <span><i class="fa-solid fa-play text-hud-green mr-1"></i> SIMULATION ENGINE</span>
+                            <span id="sim-state-text" class="text-hud-cyan">ARMED</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button id="btn-launch" class="col-span-2 py-2 bg-hud-green/20 hover:bg-hud-green/30 border border-hud-green/60 text-hud-green rounded-lg font-bold transition flex justify-center items-center tracking-wider">
+                                <i class="fa-solid fa-rocket mr-2"></i> LAUNCH
+                            </button>
+                            <button id="btn-reset" class="py-2 bg-hud-red/20 hover:bg-hud-red/30 border border-hud-red/60 text-hud-red rounded-lg font-bold transition flex justify-center items-center">
+                                <i class="fa-solid fa-rotate-left mr-1"></i> RESET
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- ENVIRONMENT & TERRAIN CONTROL -->
+                    <div class="bg-hud-panelDark/80 border border-hud-border/70 rounded-lg p-2.5 space-y-2">
+                        <div class="text-hud-dim font-bold flex justify-between border-b border-hud-border/40 pb-1 text-[10px]">
+                            <span>ENVIRONMENT & TERRAIN</span>
+                            <span class="text-hud-yellow"><i class="fa-solid fa-mountain mr-1"></i>3D MESH</span>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-hud-dim mb-0.5 text-[11px]">
+                                <span>Terrain Scale:</span>
+                                <span id="val-terrain-scale" class="text-hud-cyan font-bold">1.0 x</span>
+                            </div>
+                            <input type="range" id="param-terrain-scale" min="0.0" max="2.5" step="0.1" value="1.0" class="w-full">
+                        </div>
+                    </div>
+
+                    <!-- MISSILE GUIDANCE & DYNAMICS -->
+                    <div class="space-y-2 border-t border-hud-border/60 pt-2">
+                        <span class="text-hud-cyan font-bold block flex justify-between items-center text-[11px]">
+                            <span><i class="fa-solid fa-compass mr-1.5"></i> GUIDANCE & DYNAMICS</span>
+                            <span id="missile-name-tag" class="text-[10px] text-hud-dim font-normal">AIM-120D AMRAAM</span>
+                        </span>
+
+                        <!-- LAUNCH PITCH ANGLE SLIDER -->
+                        <div>
+                            <div class="flex justify-between text-hud-dim mb-0.5 text-[11px]">
+                                <span>Launch Pitch Angle:</span>
+                                <span id="val-launch-angle" class="text-hud-green font-bold">35.0 °</span>
+                            </div>
+                            <input type="range" id="param-launch-angle" min="10.0" max="80.0" step="1.0" value="35.0" class="w-full">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-hud-dim mb-0.5 text-[11px]">
+                                <span>Navigation Constant (N):</span>
+                                <span id="val-nav-n" class="text-hud-green font-bold">4.0</span>
+                            </div>
+                            <input type="range" id="param-nav-n" min="2.0" max="6.0" step="0.1" value="4.0" class="w-full">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-hud-dim mb-0.5 text-[11px]">
+                                <span>Max Airframe G-Limit:</span>
+                                <span id="val-max-g" class="text-hud-yellow font-bold">30.0 G</span>
+                            </div>
+                            <input type="range" id="param-max-g" min="5" max="50" step="1" value="30" class="w-full">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-hud-dim mb-0.5 text-[11px]">
+                                <span>Motor Thrust Force:</span>
+                                <span id="val-thrust" class="text-hud-cyan font-bold">25.0 kN</span>
+                            </div>
+                            <input type="range" id="param-thrust" min="5" max="60" step="1" value="25" class="w-full">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-hud-dim mb-0.5 text-[11px]">
+                                <span>Motor Burn Time:</span>
+                                <span id="val-burn-time" class="text-hud-cyan font-bold">7.5 s</span>
+                            </div>
+                            <input type="range" id="param-burn-time" min="1.0" max="15.0" step="0.5" value="7.5" class="w-full">
+                        </div>
+                    </div>
+
+                    <!-- SENSOR NOISE & FILTERING -->
+                    <div class="space-y-2 border-t border-hud-border/60 pt-2">
+                        <span class="text-hud-cyan font-bold block text-[11px]"><i class="fa-solid fa-satellite-dish mr-1.5"></i> SEEKER & SENSOR NOISE</span>
+
+                        <div>
+                            <div class="flex justify-between text-hud-dim mb-0.5 text-[11px]">
+                                <span>Radar Jitter Noise:</span>
+                                <span id="val-noise-std" class="text-hud-red font-bold">0.30 °</span>
+                            </div>
+                            <input type="range" id="param-noise-std" min="0.0" max="2.0" step="0.05" value="0.30" class="w-full">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-hud-dim mb-0.5 text-[11px]">
+                                <span>Filter Smoothing (Alpha):</span>
+                                <span id="val-filter-alpha" class="text-hud-green font-bold">0.15</span>
+                            </div>
+                            <input type="range" id="param-filter-alpha" min="0.02" max="0.80" step="0.02" value="0.15" class="w-full">
+                        </div>
+                    </div>
+
+                    <!-- TARGET STATES & MANEUVERS -->
+                    <div class="space-y-2 border-t border-hud-border/60 pt-2">
+                        <span class="text-hud-red font-bold block text-[11px]"><i class="fa-solid fa-plane-triangle mr-1.5"></i> TARGET MANEUVERS</span>
+
+                        <div>
+                            <div class="flex justify-between text-hud-dim mb-0.5 text-[11px]">
+                                <span>Target Speed:</span>
+                                <span id="val-target-speed" class="text-slate-200 font-bold">320 m/s</span>
+                            </div>
+                            <input type="range" id="param-target-speed" min="150" max="700" step="10" value="320" class="w-full">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-hud-dim mb-0.5 text-[11px]">
+                                <span>Initial Target Altitude:</span>
+                                <span id="val-target-alt" class="text-slate-200 font-bold">5000 m</span>
+                            </div>
+                            <input type="range" id="param-target-alt" min="1000" max="10000" step="250" value="5000" class="w-full">
+                        </div>
+
+                        <div class="pb-4">
+                            <span class="text-hud-dim block mb-1 text-[11px]">Evasion Maneuver Profile:</span>
+                            <select id="param-maneuver-type" class="w-full bg-hud-panel border border-hud-border text-hud-cyan font-bold rounded px-2 py-1.5 focus:outline-none focus:border-hud-cyan text-xs cursor-pointer">
+                                <option value="straight">Straight Flight (No Evasion)</option>
+                                <option value="weave" selected>Sinusoidal Weave (S-Turns)</option>
+                                <option value="break_turn">High-G Break Turn (Hard Pull)</option>
+                                <option value="barrel_roll">Spiral Barrel Roll</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- FLOATING UNCOLLAPSE BUTTON FOR SIDEBAR -->
+            <button id="btn-expand-sidebar" class="hidden absolute top-3 left-3 z-30 hud-glass border border-hud-border text-hud-cyan px-3 py-1.5 rounded font-mono text-xs hover:bg-hud-cyan/20 shadow-xl">
+                <i class="fa-solid fa-sliders mr-1"></i> Controls <i class="fa-solid fa-chevron-right ml-1"></i>
+            </button>
+
+            <!-- RIGHT COLUMN: MAIN WORKSPACE VIEWPORT & BOTTOM DOCK -->
+            <div id="workspace-column" class="flex-1 flex flex-col h-full relative overflow-hidden bg-hud-bg">
+
+                <!-- TOP VIEWPORT AREA -->
+                <div id="viewport-area" class="flex-1 relative overflow-hidden bg-hud-bg min-h-0 w-full h-full">
+                    <!-- SCANLINES OVERLAY -->
+                    <div class="absolute inset-0 scanlines z-10 pointer-events-none"></div>
+
+                    <!-- 3D THREE.JS CANVAS CONTAINER -->
+                    <div id="canvas-3d-container" class="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing"></div>
+
+                    <!-- 2D RADAR SCOPE CONTAINER -->
+                    <div id="canvas-2d-container" class="absolute inset-0 w-full h-full hidden z-0">
+                        <canvas id="radar-canvas-2d" class="w-full h-full block"></canvas>
+                    </div>
+
+                    <!-- 3D CAMERA PRESET BUTTONS -->
+                    <div id="cam-preset-bar" class="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center space-x-1 bg-hud-panel/90 border border-hud-border p-1 rounded-lg font-mono text-[10px] shadow-xl backdrop-blur-md">
+                        <span class="text-hud-dim px-2 font-bold"><i class="fa-solid fa-video mr-1"></i>POV:</span>
+                        <button class="cam-btn px-2 py-0.5 rounded bg-hud-cyan/20 text-hud-cyan border border-hud-cyan/50 font-bold" data-cam="orbit">FREE ORBIT</button>
+                        <button class="cam-btn px-2 py-0.5 rounded bg-hud-panel text-slate-300 hover:bg-hud-cyan/20" data-cam="chase">MISSILE POV</button>
+                        <button class="cam-btn px-2 py-0.5 rounded bg-hud-panel text-slate-300 hover:bg-hud-cyan/20" data-cam="target">TARGET CAM</button>
+                        <button class="cam-btn px-2 py-0.5 rounded bg-hud-panel text-slate-300 hover:bg-hud-cyan/20" data-cam="topdown">TOP DOWN</button>
+                    </div>
+
+                    <!-- TOP-RIGHT HUD TELEMETRY METRICS -->
+                    <div id="telemetry-hud-box" class="absolute top-3 right-3 z-20 font-mono space-y-1 pointer-events-none w-52">
+                        <div class="hud-glass rounded-lg p-2.5 space-y-1 border-l-2 border-l-hud-cyan">
+                            <div class="flex justify-between items-center text-[9px] text-hud-dim font-bold border-b border-hud-border/50 pb-1">
+                                <span><i class="fa-solid fa-gauge-high mr-1"></i>DYNAMIC TELEMETRY</span>
+                                <span class="text-hud-cyan">LIVE</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-1 text-[10px]">
+                                <div>RANGE: <span id="hud-val-range" class="font-bold text-hud-cyan">8000 m</span></div>
+                                <div>CLOSING V: <span id="hud-val-vclose" class="font-bold text-hud-green">0 m/s</span></div>
+                                <div>SPD: <span id="hud-val-mspeed" class="font-bold text-slate-200">600 m/s</span></div>
+                                <div>G-LOAD: <span id="hud-val-gload" class="font-bold text-hud-yellow">0.0 G</span></div>
+                                <div>ALT: <span id="hud-val-alt" class="font-bold text-slate-200">100 m</span></div>
+                                <div>FUEL: <span id="hud-val-fuel" class="font-bold text-hud-cyan">51.0 kg</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BOTTOM DOCK: INDEPENDENTLY COLLAPSIBLE PANELS -->
+                <div id="bottom-dock" class="shrink-0 flex flex-row items-end gap-3 p-2 bg-hud-panelDark border-t border-hud-border z-20">
+                    
+                    <!-- TELEMETRY ANALYTICS CARD -->
+                    <div id="charts-card" class="flex-1 flex flex-col hud-glass rounded-xl border border-hud-border overflow-hidden transition-all duration-200">
+                        <div class="flex justify-between items-center px-3 py-1 bg-hud-panelDark/95 border-b border-hud-border/40 text-[10px] text-hud-dim font-mono font-bold shrink-0">
+                            <span class="flex items-center"><i class="fa-solid fa-chart-line text-hud-cyan mr-1.5"></i> DYNAMIC TELEMETRY ANALYTICS</span>
+                            <div class="flex items-center space-x-3 text-[9px]">
+                                <span class="text-hud-cyan"><i class="fa-solid fa-circle text-[5px] mr-1"></i>SPEED</span>
+                                <span class="text-hud-yellow"><i class="fa-solid fa-circle text-[5px] mr-1"></i>G-LOAD</span>
+                                <span class="text-hud-green"><i class="fa-solid fa-circle text-[5px] mr-1"></i>RANGE</span>
+                                <button id="btn-toggle-charts" class="text-hud-cyan hover:text-white px-2 py-0.5 rounded bg-hud-border/40 hover:bg-hud-cyan/20 transition text-xs ml-2">
+                                    <span>Charts</span> <i id="charts-toggle-icon" class="fa-solid fa-chevron-down ml-0.5"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="charts-body" class="h-32 p-2 relative w-full">
+                            <canvas id="telemetry-chart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- EVENT CONSOLE LOG CARD -->
+                    <div id="log-card" class="w-80 flex flex-col hud-glass rounded-xl border border-hud-border overflow-hidden transition-all duration-200">
+                        <div class="flex justify-between items-center px-3 py-1 bg-hud-panelDark/95 border-b border-hud-border/40 text-[10px] text-hud-dim font-mono font-bold shrink-0">
+                            <span class="flex items-center"><i class="fa-solid fa-terminal text-hud-green mr-1.5"></i> EVENT CONSOLE LOG</span>
+                            <div class="flex items-center space-x-2">
+                                <button id="btn-clear-log" class="text-slate-400 hover:text-white text-xs mr-1"><i class="fa-solid fa-trash-can"></i></button>
+                                <button id="btn-toggle-log" class="text-hud-green hover:text-white px-2 py-0.5 rounded bg-hud-border/40 hover:bg-hud-green/20 transition text-xs">
+                                    <span>Log</span> <i id="log-toggle-icon" class="fa-solid fa-chevron-down ml-0.5"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="log-body" class="h-32 p-2 overflow-y-auto font-mono text-[10px] space-y-1 text-slate-300 dark-scroll">
+                            <div id="event-log-box" class="space-y-1">
+                                <div class="text-hud-dim">[00:00.00] Tactical Guidance Engine Initialized.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+
+    <!-- ===================================================================== -->
+    <!-- JAVASCRIPT ENGINE & LOGIC IMPLEMENTATION                              -->
+    <!-- ===================================================================== -->
+    <script>
+        // =====================================================================
+        // GLOBAL MISSILE DATASET (12 GLOBAL SYSTEMS)
+        // =====================================================================
+        const GLOBAL_MISSILE_DATASET = [
+            {
+                id: 'aim120d',
+                name: 'AIM-120D AMRAAM',
+                country: 'USA',
+                flag: '🇺🇸',
+                role: 'Beyond Visual Range (BVR)',
+                category: 'bvr',
+                speedMach: 4.0,
+                rangeKm: 160,
+                maxG: 30,
+                guidance: 'Active Radar Homing',
+                dryMass: 110.0, fuelMass: 51.0, thrust: 25.0, burnTime: 7.5, navN: 4.0, noiseStd: 0.30, filterAlpha: 0.15, launchAngle: 35.0, initSpeed: 600.0,
+                description: 'The premier all-weather BVR missile used by NATO forces. Features high kinetic speed retention and active radar terminal homing.'
+            },
+            {
+                id: 'aim9x',
+                name: 'AIM-9X Sidewinder',
+                country: 'USA',
+                flag: '🇺🇸',
+                role: 'Short-Range IR Dogfight',
+                category: 'ir',
+                speedMach: 2.5,
+                rangeKm: 35,
+                maxG: 40,
+                guidance: 'Imaging Infrared (IIR) + TVC',
+                dryMass: 53.0, fuelMass: 32.0, thrust: 18.0, burnTime: 2.2, navN: 4.5, noiseStd: 0.15, filterAlpha: 0.25, launchAngle: 45.0, initSpeed: 400.0,
+                description: 'Equipped with Thrust Vectoring Control (TVC) nozzles, enabling extreme high-off-boresight turns for tight close-in dogfights.'
+            },
+            {
+                id: 'patriot',
+                name: 'MIM-104 Patriot PAC-3',
+                country: 'USA',
+                flag: '🇺🇸',
+                role: 'Surface-to-Air Defense',
+                category: 'sam',
+                speedMach: 5.0,
+                rangeKm: 70,
+                maxG: 35,
+                guidance: 'Active Radar Kinetic Hit-to-Kill',
+                dryMass: 230.0, fuelMass: 85.0, thrust: 48.0, burnTime: 6.0, navN: 4.2, noiseStd: 0.20, filterAlpha: 0.20, launchAngle: 55.0, initSpeed: 500.0,
+                description: 'High-altitude surface-to-air interceptor designed to slam directly into tactical ballistic missiles using direct kinetic hit.'
+            },
+            {
+                id: 'astra',
+                name: 'Astra Mk-1',
+                country: 'India',
+                flag: '🇮🇳',
+                role: 'Beyond Visual Range (BVR)',
+                category: 'bvr',
+                speedMach: 4.5,
+                rangeKm: 110,
+                maxG: 30,
+                guidance: 'Active Radar + ECCM',
+                dryMass: 105.0, fuelMass: 49.0, thrust: 26.0, burnTime: 6.8, navN: 4.1, noiseStd: 0.22, filterAlpha: 0.18, launchAngle: 35.0, initSpeed: 620.0,
+                description: 'Indigenous Indian BVR interceptor featuring high-altitude flight stability and advanced electronic counter-countermeasures.'
+            },
+            {
+                id: 'akash',
+                name: 'Akash Mk-1S',
+                country: 'India',
+                flag: '🇮🇳',
+                role: 'Surface-to-Air (Ramjet)',
+                category: 'ramjet',
+                speedMach: 2.5,
+                rangeKm: 30,
+                maxG: 28,
+                guidance: 'Integrated Ramjet Air-Breather',
+                dryMass: 190.0, fuelMass: 70.0, thrust: 32.0, burnTime: 9.0, navN: 3.8, noiseStd: 0.25, filterAlpha: 0.20, launchAngle: 50.0, initSpeed: 450.0,
+                description: 'Integrated ducted ramjet propulsion maintains active thrust throughout its entire trajectory against low-to-medium targets.'
+            },
+            {
+                id: 'meteor',
+                name: 'Meteor BVRAAM',
+                country: 'Europe',
+                flag: '🇪🇺',
+                role: 'Throttleable Ramjet BVR',
+                category: 'ramjet',
+                speedMach: 4.0,
+                rangeKm: 200,
+                maxG: 32,
+                guidance: 'Throttleable Ducted Ramjet',
+                dryMass: 120.0, fuelMass: 65.0, thrust: 28.0, burnTime: 12.0, navN: 4.4, noiseStd: 0.18, filterAlpha: 0.22, launchAngle: 30.0, initSpeed: 650.0,
+                description: 'Features a throttleable ramjet engine that regulates air intake during cruise to reserve fuel for a high-speed terminal sprint.'
+            },
+            {
+                id: 'r73',
+                name: 'R-73 (AA-11 Archer)',
+                country: 'Russia',
+                flag: '🇷🇺',
+                role: 'Short-Range IR High-G',
+                category: 'ir',
+                speedMach: 2.5,
+                rangeKm: 30,
+                maxG: 45,
+                guidance: 'Infrared Seeker + Gas Vanes',
+                dryMass: 58.0, fuelMass: 35.0, thrust: 20.0, burnTime: 2.5, navN: 4.8, noiseStd: 0.28, filterAlpha: 0.25, launchAngle: 40.0, initSpeed: 420.0,
+                description: 'Legendary Russian short-range missile equipped with mechanical thrust-vectoring vanes capable of 45G evasive turns.'
+            },
+            {
+                id: 'r77',
+                name: 'R-77-1 (AA-12 Adder)',
+                country: 'Russia',
+                flag: '🇷🇺',
+                role: 'Beyond Visual Range (BVR)',
+                category: 'bvr',
+                speedMach: 4.0,
+                rangeKm: 110,
+                maxG: 30,
+                guidance: 'Active Radar + Grid Control Fins',
+                dryMass: 115.0, fuelMass: 53.0, thrust: 24.0, burnTime: 7.0, navN: 4.0, noiseStd: 0.32, filterAlpha: 0.15, launchAngle: 35.0, initSpeed: 580.0,
+                description: 'Distinguished by its lattice grid tail control fins, providing superior control surface authority at high angles of attack.'
+            },
+            {
+                id: 'pl15',
+                name: 'PL-15',
+                country: 'China',
+                flag: '🇨🇳',
+                role: 'Long-Range BVR',
+                category: 'bvr',
+                speedMach: 5.0,
+                rangeKm: 200,
+                maxG: 28,
+                guidance: 'Dual-Pulse Rocket Motor',
+                dryMass: 130.0, fuelMass: 75.0, thrust: 35.0, burnTime: 9.5, navN: 4.2, noiseStd: 0.25, filterAlpha: 0.18, launchAngle: 32.0, initSpeed: 700.0,
+                description: 'Employs a dual-pulse solid rocket motor that ignites its second pulse during terminal intercept to maximize impact velocity.'
+            },
+            {
+                id: 's400',
+                name: 'S-400 Triumf (48N6)',
+                country: 'Russia',
+                flag: '🇷🇺',
+                role: 'Long-Range SAM',
+                category: 'sam',
+                speedMach: 6.0,
+                rangeKm: 250,
+                maxG: 30,
+                guidance: 'Track-Via-Missile Radar',
+                dryMass: 380.0, fuelMass: 180.0, thrust: 65.0, burnTime: 8.5, navN: 4.3, noiseStd: 0.20, filterAlpha: 0.20, launchAngle: 60.0, initSpeed: 600.0,
+                description: 'Heavy surface-to-air missile designed to climb rapidly into thin air before diving onto enemy aircraft and ballistic missiles.'
+            },
+            {
+                id: 'brahmos',
+                name: 'BrahMos Air-Launched',
+                country: 'India / Russia',
+                flag: '🇮🇳',
+                role: 'Supersonic Ramjet Heavy',
+                category: 'ramjet',
+                speedMach: 3.0,
+                rangeKm: 300,
+                maxG: 25,
+                guidance: 'Air-Breathing Ramjet Supersonic',
+                dryMass: 450.0, fuelMass: 200.0, thrust: 55.0, burnTime: 14.0, navN: 3.6, noiseStd: 0.15, filterAlpha: 0.22, launchAngle: 25.0, initSpeed: 650.0,
+                description: 'The world\'s fastest operational supersonic cruise missile, utilizing liquid ramjet propulsion for high kinetic impact.'
+            },
+            {
+                id: 'hellfire',
+                name: 'AGM-114 Hellfire',
+                country: 'USA',
+                flag: '🇺🇸',
+                role: 'Tactical Anti-Armor / Short',
+                category: 'ir',
+                speedMach: 1.3,
+                rangeKm: 11,
+                maxG: 20,
+                guidance: 'Semi-Active Laser Homing',
+                dryMass: 35.0, fuelMass: 14.0, thrust: 10.0, burnTime: 3.0, navN: 3.5, noiseStd: 0.10, filterAlpha: 0.30, launchAngle: 20.0, initSpeed: 250.0,
+                description: 'Precision tactical strike missile designed for low-altitude helicopter launch against hardened tactical ground/air targets.'
+            }
+        ];
+
+        // Active Simulation Configuration
+        let config = {
+            navN: 4.0,
+            maxG: 30.0,
+            thrust: 25000.0,
+            burnTime: 7.5,
+            dryMass: 110.0,
+            fuelMass: 51.0,
+            noiseStd: 0.30 * (Math.PI / 180.0),
+            filterAlpha: 0.15,
+            launchAngle: 35.0,
+            initSpeed: 600.0,
+            terrainScale: 1.0,
+            targetSpeed: 320.0,
+            targetAlt: 5000.0,
+            targetManeuver: 'weave'
+        };
+
+        // Tab Switcher
+        let engineInitialized = false;
+        let viewportResizeObserver = null;
+
+        function switchTab(tabId) {
+            const tabs = ['portal', 'arsenal', 'theory', 'simulator'];
+            tabs.forEach(id => {
+                const el = document.getElementById(`tab-${id}`);
+                if (el) {
+                    if (id === tabId) {
+                        el.classList.remove('hidden');
+                        if (id === 'simulator') {
+                            el.classList.add('flex');
+                        }
+                    } else {
+                        el.classList.add('hidden');
+                        if (id === 'simulator') {
+                            el.classList.remove('flex');
+                        }
+                    }
+                }
+            });
+
+            tabs.forEach(id => {
+                const btn = document.getElementById(`nav-btn-${id}`);
+                if (btn) {
+                    if (id === tabId) {
+                        btn.className = "nav-tab-btn px-3 py-1.5 rounded-md font-semibold transition flex items-center bg-sky-600 text-white shadow-sm ml-1";
+                    } else {
+                        btn.className = "nav-tab-btn px-3 py-1.5 rounded-md font-semibold transition flex items-center text-slate-300 hover:text-white hover:bg-slate-700/50 ml-1";
+                    }
+                }
+            });
+
+            // Trigger canvas layout recalculation when switching to simulator tab
+            if (tabId === 'simulator') {
+                // Wait for the tab's flex layout to become measurable before sizing WebGL.
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                    if (!engineInitialized && window.THREE) {
+                        init3DScene();
+                        engineInitialized = true;
+                    }
+                    triggerViewportResize();
+                }));
+                setTimeout(triggerViewportResize, 150);
+            }
+        }
+
+        // =====================================================================
+        // ARSENAL CATALOG RENDER & SEARCH FILTERING
+        // =====================================================================
+        function renderArsenalCatalog(searchQuery = '', selectedCategory = 'all') {
+            const container = document.getElementById('arsenal-grid');
+            if (!container) return;
+
+            const filtered = GLOBAL_MISSILE_DATASET.filter(m => {
+                const matchesSearch = searchQuery === '' || 
+                    m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    m.country.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    m.role.toLowerCase().includes(searchQuery.toLowerCase());
+                
+                const matchesCategory = selectedCategory === 'all' || m.category === selectedCategory;
+
+                return matchesSearch && matchesCategory;
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = `<div class="col-span-full py-12 text-center text-slate-500 font-mono text-sm">No missile systems match your search criteria.</div>`;
+                return;
+            }
+
+            container.innerHTML = filtered.map(m => `
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition p-6 flex flex-col justify-between space-y-4">
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <span class="text-xs font-mono font-bold text-sky-600 uppercase tracking-wider">${m.flag} ${m.country}</span>
+                                <h3 class="text-lg font-bold font-orbitron text-slate-900 mt-0.5">${m.name}</h3>
+                            </div>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200 uppercase">${m.role}</span>
+                        </div>
+
+                        <p class="text-slate-600 text-xs leading-relaxed">${m.description}</p>
+
+                        <!-- Spec Badges -->
+                        <div class="grid grid-cols-3 gap-2 font-mono text-[11px] pt-1">
+                            <div class="bg-slate-50 border border-slate-200 p-2 rounded-lg text-center">
+                                <div class="text-slate-400 text-[9px]">SPEED</div>
+                                <div class="font-bold text-slate-800">Mach ${m.speedMach}</div>
+                            </div>
+                            <div class="bg-slate-50 border border-slate-200 p-2 rounded-lg text-center">
+                                <div class="text-slate-400 text-[9px]">MAX RANGE</div>
+                                <div class="font-bold text-sky-600">${m.rangeKm} km</div>
+                            </div>
+                            <div class="bg-slate-50 border border-slate-200 p-2 rounded-lg text-center">
+                                <div class="text-slate-400 text-[9px]">G-LIMIT</div>
+                                <div class="font-bold text-amber-600">${m.maxG} G</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button onclick="loadMissileIntoSimulator('${m.id}')" class="w-full py-2.5 bg-slate-900 hover:bg-sky-600 text-white rounded-xl font-mono text-xs font-bold transition flex items-center justify-center space-x-2 shadow-sm">
+                        <i class="fa-solid fa-bolt text-rose-400"></i>
+                        <span>Load Into Simulator</span>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function loadMissileIntoSimulator(missileId) {
+            const selected = GLOBAL_MISSILE_DATASET.find(m => m.id === missileId);
+            if (!selected) return;
+
+            config.navN = selected.navN;
+            config.maxG = selected.maxG;
+            config.thrust = selected.thrust * 1000.0;
+            config.burnTime = selected.burnTime;
+            config.dryMass = selected.dryMass;
+            config.fuelMass = selected.fuelMass;
+            config.noiseStd = selected.noiseStd * (Math.PI / 180.0);
+            config.filterAlpha = selected.filterAlpha;
+            config.launchAngle = selected.launchAngle;
+            config.initSpeed = selected.initSpeed;
+
+            document.getElementById('missile-name-tag').textContent = selected.name;
+            applyConfigToSliders();
+
+            switchTab('simulator');
+            resetSimulation();
+            logEvent(`⚡ Loaded custom preset: ${selected.name} (${selected.country})`);
+        }
+
+        function setupArsenalSearch() {
+            const searchInput = document.getElementById('arsenal-search-input');
+            if (searchInput) {
+                searchInput.addEventListener('input', (e) => {
+                    const activeChip = document.querySelector('.filter-chip.bg-sky-600');
+                    const category = activeChip ? activeChip.dataset.category : 'all';
+                    renderArsenalCatalog(e.target.value, category);
+                });
+            }
+
+            document.querySelectorAll('.filter-chip').forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    document.querySelectorAll('.filter-chip').forEach(c => {
+                        c.className = "filter-chip px-3 py-1.5 rounded-lg border font-semibold bg-white text-slate-700 border-slate-300 hover:border-sky-400";
+                    });
+                    e.target.className = "filter-chip px-3 py-1.5 rounded-lg border font-semibold bg-sky-600 text-white border-sky-600";
+                    
+                    const query = document.getElementById('arsenal-search-input').value;
+                    renderArsenalCatalog(query, e.target.dataset.category);
+                });
+            });
+        }
+
+
+        // =====================================================================
+        // LIVE SIMULATOR THREE.JS 3D & CANVAS 2D ENGINE
+        // =====================================================================
+        let is3DMode = true;
+        let showOverlays = true;
+        let isRunning = false;
+        let simTime = 0.0;
+        let animationFrameId = null;
+
+        let missileState = {};
+        let targetState = {};
+        let historyData = { time: [], speed: [], gLoad: [], range: [], mX: [], mY: [], tX: [], tY: [] };
+        let seekerPrevNoisyLos = null;
+        let seekerFilteredLosRate = 0.0;
+
+        let scene3D, camera3D, renderer3D, controls3D;
+        let terrainMesh, missileMesh, targetMesh, seekerConeMesh, losLine3D;
+        let missileBeaconMesh, targetBeaconMesh;
+        let missileTrail3D, targetTrail3D;
+        let missileTrailGeometry, targetTrailGeometry;
+        let explosionGroup = null;
+        let currentCamMode = 'orbit';
+
+        function init3DScene() {
+            const container = document.getElementById('canvas-3d-container');
+            if (!container) return;
+
+            scene3D = new THREE.Scene();
+            scene3D.background = new THREE.Color(0x040d1a);
+            scene3D.fog = new THREE.FogExp2(0x040d1a, 0.00005);
+
+            camera3D = new THREE.PerspectiveCamera(55, 16 / 9, 1, 50000);
+            camera3D.position.set(-2000, 2500, 4500);
+
+            renderer3D = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+            renderer3D.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer3D.shadowMap.enabled = true;
+            container.appendChild(renderer3D.domElement);
+
+            controls3D = new THREE.OrbitControls(camera3D, renderer3D.domElement);
+            controls3D.enableDamping = true;
+            controls3D.dampingFactor = 0.05;
+            controls3D.maxPolarAngle = Math.PI / 2 - 0.01;
+            controls3D.target.set(3000, 2000, 0);
+
+            // Enhanced Lighting for high visibility
+            const ambientLight = new THREE.AmbientLight(0x7dd3fc, 0.8);
+            scene3D.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            dirLight.position.set(5000, 10000, 5000);
+            dirLight.castShadow = true;
+            scene3D.add(dirLight);
+
+            const fillLight = new THREE.DirectionalLight(0x38bdf8, 0.8);
+            fillLight.position.set(-5000, 5000, -5000);
+            scene3D.add(fillLight);
+
+            create3DTerrain();
+            create3DModels();
+            create3DOverlays();
+
+            // RESIZE OBSERVER ATTACHMENT FOR 100% RELIABLE WEBGBL VIEWPORT RESIZING
+            const viewportArea = document.getElementById('viewport-area');
+            if (viewportArea && window.ResizeObserver) {
+                if (viewportResizeObserver) viewportResizeObserver.disconnect();
+                viewportResizeObserver = new ResizeObserver(() => triggerViewportResize());
+                viewportResizeObserver.observe(viewportArea);
+                viewportResizeObserver.observe(container);
+            }
+
+            window.addEventListener('resize', triggerViewportResize);
+            // Retry after browser layout has settled; hidden tabs report 0x0.
+            requestAnimationFrame(() => requestAnimationFrame(triggerViewportResize));
+            setTimeout(triggerViewportResize, 150);
+        }
+
+        function triggerViewportResize() {
+            const viewportArea = document.getElementById('viewport-area');
+            if (!viewportArea) return;
+            const canvasContainer = document.getElementById('canvas-3d-container');
+            const rect = (canvasContainer || viewportArea).getBoundingClientRect();
+            const width = Math.floor(rect.width);
+            const height = Math.floor(rect.height);
+
+            if (width > 0 && height > 0) {
+                if (camera3D && renderer3D) {
+                    camera3D.aspect = width / height;
+                    camera3D.updateProjectionMatrix();
+                    renderer3D.setSize(width, height);
+                }
+                resize2DCanvas();
+                if (is3DMode && renderer3D && scene3D && camera3D) {
+                    update3DPositions();
+                    renderer3D.render(scene3D, camera3D);
+                } else {
+                    render2DRadar();
+                }
+            }
+        }
+
+        function create3DTerrain() {
+            const size = 40000;
+            const segments = 80;
+            const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
+            geometry.rotateX(-Math.PI / 2);
+
+            const material = new THREE.MeshStandardMaterial({
+                color: 0x0a192f,
+                roughness: 0.6,
+                metalness: 0.3
+            });
+
+            terrainMesh = new THREE.Mesh(geometry, material);
+            terrainMesh.receiveShadow = true;
+            scene3D.add(terrainMesh);
+
+            // High-contrast glowing cyan grid lines
+            const wireMaterial = new THREE.MeshBasicMaterial({ color: 0x00f0ff, wireframe: true, transparent: true, opacity: 0.35 });
+            const terrainGrid = new THREE.Mesh(geometry, wireMaterial);
+            terrainGrid.position.y += 2;
+            scene3D.add(terrainGrid);
+
+            // Ground distance radar circles
+            for (let r = 2000; r <= 12000; r += 2000) {
+                const ringGeo = new THREE.RingGeometry(r - 10, r + 10, 64);
+                ringGeo.rotateX(-Math.PI / 2);
+                const ringMat = new THREE.MeshBasicMaterial({ color: 0x0284c7, transparent: true, opacity: 0.25, side: THREE.DoubleSide });
+                const ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.position.y = 5;
+                scene3D.add(ring);
+            }
+
+            updateTerrainMesh();
+        }
+
+        function getTerrainHeight(x, z) {
+            const scale = config.terrainScale !== undefined ? config.terrainScale : 1.0;
+            const h = (Math.sin(x * 0.0003) * Math.cos(z * 0.0003) * 600 +
+                       Math.sin(x * 0.0008) * Math.sin(z * 0.0008) * 350) * scale;
+            return Math.max(0, h);
+        }
+
+        function updateTerrainMesh() {
+            if (!terrainMesh) return;
+            const geometry = terrainMesh.geometry;
+            const pos = geometry.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                const x = pos.getX(i);
+                const z = pos.getZ(i);
+                pos.setY(i, getTerrainHeight(x, z));
+            }
+            pos.needsUpdate = true;
+            geometry.computeVertexNormals();
+            render2DRadar();
+        }
+
+        function create3DModels() {
+            // Missile Mesh
+            const missileGroup = new THREE.Group();
+            
+            const bodyGeo = new THREE.CylinderGeometry(12, 12, 140, 16);
+            bodyGeo.rotateX(Math.PI / 2);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.8, roughness: 0.2 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            missileGroup.add(body);
+
+            const noseGeo = new THREE.ConeGeometry(12, 40, 16);
+            noseGeo.rotateX(Math.PI / 2);
+            noseGeo.translate(0, 0, 90);
+            const noseMat = new THREE.MeshStandardMaterial({ color: 0x00f0ff, metalness: 0.9, roughness: 0.1 });
+            const nose = new THREE.Mesh(noseGeo, noseMat);
+            missileGroup.add(nose);
+
+            const finGeo = new THREE.BoxGeometry(50, 3, 30);
+            const finMat = new THREE.MeshStandardMaterial({ color: 0x334155 });
+            const fin1 = new THREE.Mesh(finGeo, finMat);
+            fin1.position.set(0, 0, -50);
+            missileGroup.add(fin1);
+            const fin2 = new THREE.Mesh(finGeo, finMat);
+            fin2.position.set(0, 0, -50);
+            fin2.rotation.z = Math.PI / 2;
+            missileGroup.add(fin2);
+
+            // Missile Bright Beacon Marker
+            const beaconGeo = new THREE.SphereGeometry(30, 16, 16);
+            const beaconMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.8 });
+            missileBeaconMesh = new THREE.Mesh(beaconGeo, beaconMat);
+            missileGroup.add(missileBeaconMesh);
+
+            missileMesh = missileGroup;
+            scene3D.add(missileMesh);
+
+            // Target Jet Mesh
+            const jetGroup = new THREE.Group();
+            
+            const fuseGeo = new THREE.ConeGeometry(25, 180, 8);
+            fuseGeo.rotateX(Math.PI / 2);
+            const fuseMat = new THREE.MeshStandardMaterial({ color: 0xff2a5f, metalness: 0.7, roughness: 0.3 });
+            const fuse = new THREE.Mesh(fuseGeo, fuseMat);
+            jetGroup.add(fuse);
+
+            const wingGeo = new THREE.BoxGeometry(200, 6, 60);
+            const wingMat = new THREE.MeshStandardMaterial({ color: 0x991b1b });
+            const wings = new THREE.Mesh(wingGeo, wingMat);
+            wings.position.set(0, 0, -15);
+            jetGroup.add(wings);
+
+            // Target Bright Red Beacon Marker
+            const tBeaconGeo = new THREE.BoxGeometry(50, 50, 50);
+            const tBeaconMat = new THREE.MeshBasicMaterial({ color: 0xff2a5f, wireframe: true });
+            targetBeaconMesh = new THREE.Mesh(tBeaconGeo, tBeaconMat);
+            jetGroup.add(targetBeaconMesh);
+
+            targetMesh = jetGroup;
+            scene3D.add(targetMesh);
+        }
+
+        function create3DOverlays() {
+            const coneGeo = new THREE.ConeGeometry(500, 1500, 16, 1, true);
+            coneGeo.rotateX(-Math.PI / 2);
+            coneGeo.translate(0, 0, 750);
+            const coneMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.2, side: THREE.DoubleSide, wireframe: true });
+            seekerConeMesh = new THREE.Mesh(coneGeo, coneMat);
+            missileMesh.add(seekerConeMesh);
+
+            const losMat = new THREE.LineDashedMaterial({ color: 0xffcc00, dashSize: 60, gapSize: 30 });
+            const losGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+            losLine3D = new THREE.Line(losGeo, losMat);
+            scene3D.add(losLine3D);
+
+            const maxPoints = 2000;
+            missileTrailGeometry = new THREE.BufferGeometry();
+            missileTrailGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(maxPoints * 3), 3));
+            const missileTrailMat = new THREE.LineBasicMaterial({ color: 0x00f0ff, linewidth: 3 });
+            missileTrail3D = new THREE.Line(missileTrailGeometry, missileTrailMat);
+            scene3D.add(missileTrail3D);
+
+            targetTrailGeometry = new THREE.BufferGeometry();
+            targetTrailGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(maxPoints * 3), 3));
+            const targetTrailMat = new THREE.LineBasicMaterial({ color: 0xff2a5f, linewidth: 3 });
+            targetTrail3D = new THREE.Line(targetTrailGeometry, targetTrailMat);
+            scene3D.add(targetTrail3D);
+        }
+
+        function update3DOverlaysVisibility() {
+            if (!seekerConeMesh) return;
+            seekerConeMesh.visible = showOverlays;
+            losLine3D.visible = showOverlays;
+            missileTrail3D.visible = showOverlays;
+            targetTrail3D.visible = showOverlays;
+        }
+
+        function update3DPositions() {
+            if (!missileMesh || !targetMesh) return;
+
+            missileMesh.position.set(missileState.x, missileState.y, missileState.z);
+            const mVel = new THREE.Vector3(missileState.vx, missileState.vy, missileState.vz).normalize();
+            if (mVel.lengthSq() > 0) {
+                const targetRot = new THREE.Vector3().addVectors(missileMesh.position, mVel);
+                missileMesh.lookAt(targetRot);
+            }
+
+            targetMesh.position.set(targetState.x, targetState.y, targetState.z);
+            const tVel = new THREE.Vector3(targetState.vx, targetState.vy, targetState.vz).normalize();
+            if (tVel.lengthSq() > 0) {
+                const targetRot = new THREE.Vector3().addVectors(targetMesh.position, tVel);
+                targetMesh.lookAt(targetRot);
+            }
+
+            if (showOverlays && losLine3D) {
+                const losPoints = [
+                    new THREE.Vector3(missileState.x, missileState.y, missileState.z),
+                    new THREE.Vector3(targetState.x, targetState.y, targetState.z)
+                ];
+                losLine3D.geometry.setFromPoints(losPoints);
+                losLine3D.geometry.computeBoundingSphere();
+            }
+
+            if (currentCamMode === 'chase') {
+                const offset = new THREE.Vector3(0, 80, -350).applyQuaternion(missileMesh.quaternion);
+                camera3D.position.copy(missileMesh.position).add(offset);
+                controls3D.target.copy(missileMesh.position);
+            } else if (currentCamMode === 'target') {
+                const offset = new THREE.Vector3(0, 150, 500).applyQuaternion(targetMesh.quaternion);
+                camera3D.position.copy(targetMesh.position).add(offset);
+                controls3D.target.copy(targetMesh.position);
+            } else if (currentCamMode === 'topdown') {
+                camera3D.position.set(missileState.x, 12000, missileState.z);
+                controls3D.target.set(missileState.x, 0, missileState.z);
+            }
+
+            controls3D.update();
+        }
+
+        function append3DTrails() {
+            if (historyData.time.length < 2) return;
+
+            const mPos = missileTrailGeometry.attributes.position;
+            const tPos = targetTrailGeometry.attributes.position;
+            const idx = historyData.time.length - 1;
+
+            if (idx < 2000) {
+                mPos.setXYZ(idx, missileState.x, missileState.y, missileState.z);
+                tPos.setXYZ(idx, targetState.x, targetState.y, targetState.z);
+                missileTrailGeometry.setDrawRange(0, idx + 1);
+                targetTrailGeometry.setDrawRange(0, idx + 1);
+                mPos.needsUpdate = true;
+                tPos.needsUpdate = true;
+            }
+        }
+
+        function clear3DTrails() {
+            if (missileTrailGeometry) {
+                missileTrailGeometry.setDrawRange(0, 0);
+                missileTrailGeometry.attributes.position.needsUpdate = true;
+            }
+            if (targetTrailGeometry) {
+                targetTrailGeometry.setDrawRange(0, 0);
+                targetTrailGeometry.attributes.position.needsUpdate = true;
+            }
+            if (explosionGroup) {
+                scene3D.remove(explosionGroup);
+                explosionGroup = null;
+            }
+        }
+
+        function trigger3DExplosion(x, y, z) {
+            if (explosionGroup) scene3D.remove(explosionGroup);
+            explosionGroup = new THREE.Group();
+
+            const particleCount = 40;
+            const geo = new THREE.SphereGeometry(15, 8, 8);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 0.9 });
+
+            for (let i = 0; i < particleCount; i++) {
+                const p = new THREE.Mesh(geo, mat);
+                p.position.set(x + (Math.random() - 0.5) * 100, y + (Math.random() - 0.5) * 100, z + (Math.random() - 0.5) * 100);
+                explosionGroup.add(p);
+            }
+            scene3D.add(explosionGroup);
+        }
+
+        // =====================================================================
+        // 2D RADAR SCOPE (CANVAS 2D)
+        // =====================================================================
+        let canvas2D, ctx2D;
+
+        function init2DRadar() {
+            canvas2D = document.getElementById('radar-canvas-2d');
+            if (!canvas2D) return;
+            ctx2D = canvas2D.getContext('2d');
+            resize2DCanvas();
+        }
+
+        function resize2DCanvas() {
+            if (!canvas2D || !canvas2D.parentElement) return;
+            const rect = canvas2D.parentElement.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                const dpr = Math.max(1, window.devicePixelRatio || 1);
+                canvas2D.width = Math.round(rect.width * dpr);
+                canvas2D.height = Math.round(rect.height * dpr);
+                canvas2D.style.width = rect.width + 'px';
+                canvas2D.style.height = rect.height + 'px';
+                ctx2D.setTransform(dpr, 0, 0, dpr, 0, 0);
+            }
+        }
+
+        function render2DRadar() {
+            if (!canvas2D || is3DMode) return;
+
+            const rect = canvas2D.getBoundingClientRect();
+            const w = rect.width;
+            const h = rect.height;
+            if (w === 0 || h === 0) return;
+
+            ctx2D.fillStyle = '#020617';
+            ctx2D.fillRect(0, 0, w, h);
+
+            const margin = 55;
+            const mapW = w - margin * 2;
+            const mapH = h - margin * 2;
+
+            const maxDistanceX = 12000.0;
+            const maxAltitudeY = 9000.0;
+
+            function worldToCanvas(wx, wy) {
+                const cx = margin + (wx / maxDistanceX) * mapW;
+                const cy = (h - margin) - (wy / maxAltitudeY) * mapH;
+                return { x: cx, y: cy };
+            }
+
+            ctx2D.strokeStyle = showOverlays ? 'rgba(30, 58, 95, 0.6)' : 'rgba(30, 58, 95, 0.2)';
+            ctx2D.lineWidth = 1;
+            ctx2D.font = '10px "Share Tech Mono"';
+            ctx2D.fillStyle = '#52789c';
+
+            for (let alt = 0; alt <= maxAltitudeY; alt += 2000) {
+                const p = worldToCanvas(0, alt);
+                ctx2D.beginPath();
+                ctx2D.moveTo(margin, p.y);
+                ctx2D.lineTo(w - margin, p.y);
+                ctx2D.stroke();
+
+                if (showOverlays) {
+                    ctx2D.fillText(`${alt}m ALT`, 8, p.y + 3);
+                }
+            }
+
+            for (let dist = 0; dist <= maxDistanceX; dist += 2000) {
+                const p = worldToCanvas(dist, 0);
+                ctx2D.beginPath();
+                ctx2D.moveTo(p.x, margin);
+                ctx2D.lineTo(p.x, h - margin);
+                ctx2D.stroke();
+
+                if (showOverlays) {
+                    ctx2D.fillText(`${dist / 1000}km`, p.x - 10, h - margin + 18);
+                }
+            }
+
+            ctx2D.fillStyle = '#0f172a';
+            ctx2D.beginPath();
+            ctx2D.moveTo(margin, h - margin);
+            for (let wx = 0; wx <= maxDistanceX; wx += 200) {
+                const gh = getTerrainHeight(wx, 0);
+                const p = worldToCanvas(wx, gh);
+                ctx2D.lineTo(p.x, p.y);
+            }
+            ctx2D.lineTo(w - margin, h - margin);
+            ctx2D.closePath();
+            ctx2D.fill();
+
+            if (historyData.time.length > 1) {
+                ctx2D.strokeStyle = '#00f0ff';
+                ctx2D.lineWidth = 2;
+                ctx2D.beginPath();
+                for (let i = 0; i < historyData.time.length; i++) {
+                    const px = historyData.mX[i];
+                    const py = historyData.mY[i];
+                    const p = worldToCanvas(px, py);
+                    if (i === 0) ctx2D.moveTo(p.x, p.y);
+                    else ctx2D.lineTo(p.x, p.y);
+                }
+                ctx2D.stroke();
+
+                ctx2D.strokeStyle = '#ff2a5f';
+                ctx2D.lineWidth = 2;
+                ctx2D.setLineDash([4, 4]);
+                ctx2D.beginPath();
+                for (let i = 0; i < historyData.time.length; i++) {
+                    const px = historyData.tX[i];
+                    const py = historyData.tY[i];
+                    const p = worldToCanvas(px, py);
+                    if (i === 0) ctx2D.moveTo(p.x, p.y);
+                    else ctx2D.lineTo(p.x, p.y);
+                }
+                ctx2D.stroke();
+                ctx2D.setLineDash([]);
+            }
+
+            const mCanvas = worldToCanvas(missileState.x, missileState.y);
+            const tCanvas = worldToCanvas(targetState.x, targetState.y);
+
+            if (showOverlays) {
+                ctx2D.strokeStyle = '#ffcc00';
+                ctx2D.lineWidth = 1.5;
+                ctx2D.setLineDash([6, 6]);
+                ctx2D.beginPath();
+                ctx2D.moveTo(mCanvas.x, mCanvas.y);
+                ctx2D.lineTo(tCanvas.x, tCanvas.y);
+                ctx2D.stroke();
+                ctx2D.setLineDash([]);
+
+                const mAngle = Math.atan2(missileState.vy, missileState.vx);
+                const arrowLen = 35;
+                ctx2D.strokeStyle = '#00f0ff';
+                ctx2D.lineWidth = 2;
+                ctx2D.beginPath();
+                ctx2D.moveTo(mCanvas.x, mCanvas.y);
+                ctx2D.lineTo(mCanvas.x + Math.cos(mAngle) * arrowLen, mCanvas.y - Math.sin(mAngle) * arrowLen);
+                ctx2D.stroke();
+
+                const tAngle = Math.atan2(targetState.vy, targetState.vx);
+                ctx2D.strokeStyle = '#ff2a5f';
+                ctx2D.lineWidth = 2;
+                ctx2D.beginPath();
+                ctx2D.moveTo(tCanvas.x, tCanvas.y);
+                ctx2D.lineTo(tCanvas.x + Math.cos(tAngle) * arrowLen, tCanvas.y - Math.sin(tAngle) * arrowLen);
+                ctx2D.stroke();
+
+                ctx2D.fillStyle = '#00f0ff';
+                ctx2D.font = 'bold 11px Orbitron';
+                ctx2D.fillText('▲ ALTITUDE (Y)', margin + 10, margin + 20);
+                ctx2D.fillText('▶ DOWNRANGE DISTANCE (X)', w - margin - 180, h - margin - 10);
+            }
+
+            ctx2D.fillStyle = '#00f0ff';
+            ctx2D.beginPath();
+            ctx2D.arc(mCanvas.x, mCanvas.y, 6, 0, Math.PI * 2);
+            ctx2D.fill();
+            ctx2D.strokeStyle = '#ffffff';
+            ctx2D.stroke();
+
+            ctx2D.strokeStyle = '#ff2a5f';
+            ctx2D.lineWidth = 2;
+            ctx2D.strokeRect(tCanvas.x - 8, tCanvas.y - 8, 16, 16);
+            ctx2D.fillStyle = '#ff2a5f';
+            ctx2D.fillRect(tCanvas.x - 2, tCanvas.y - 2, 4, 4);
+
+            if (showOverlays) {
+                ctx2D.fillStyle = '#00f0ff';
+                ctx2D.font = '10px "Share Tech Mono"';
+                ctx2D.fillText(`MISSILE (${Math.round(missileState.v)}m/s)`, mCanvas.x + 10, mCanvas.y - 10);
+
+                ctx2D.fillStyle = '#ff2a5f';
+                ctx2D.fillText(`TARGET (${Math.round(targetState.v)}m/s)`, tCanvas.x + 10, tCanvas.y - 10);
+            }
+        }
+
+        // =====================================================================
+        // FLAWLESS RESET ENGINE & KINEMATICS
+        // =====================================================================
+        function resetSimulation() {
+            isRunning = false;
+            if (animationFrameId !== null) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+
+            simTime = 0.0;
+            readSliderInputs();
+
+            targetState = {
+                x: 8000.0,
+                y: config.targetAlt,
+                z: 0.0,
+                v: config.targetSpeed,
+                headingYaw: Math.PI,
+                headingPitch: 0.0,
+                vx: -config.targetSpeed,
+                vy: 0.0,
+                vz: 0.0
+            };
+
+            const radAngle = (config.launchAngle || 35.0) * Math.PI / 180.0;
+            missileState = {
+                x: 0.0,
+                y: 100.0,
+                z: 0.0,
+                v: config.initSpeed || 600.0,
+                dryMass: config.dryMass,
+                fuelMass: config.fuelMass,
+                headingYaw: 0.0,
+                headingPitch: radAngle,
+                vx: (config.initSpeed || 600.0) * Math.cos(radAngle),
+                vy: (config.initSpeed || 600.0) * Math.sin(radAngle),
+                vz: 0.0
+            };
+
+            seekerPrevNoisyLos = null;
+            seekerFilteredLosRate = 0.0;
+
+            historyData = { time: [], speed: [], gLoad: [], range: [], mX: [], mY: [], tX: [], tY: [] };
+
+            clear3DTrails();
+
+            document.getElementById('hud-sim-time').textContent = '00:00.00';
+            document.getElementById('hud-val-range').textContent = '8000 m';
+            document.getElementById('hud-val-vclose').textContent = '0 m/s';
+            document.getElementById('hud-val-mspeed').textContent = `${Math.round(missileState.v)} m/s`;
+            document.getElementById('hud-val-gload').textContent = '0.0 G';
+            document.getElementById('hud-val-alt').textContent = `${Math.round(missileState.y)} m`;
+            document.getElementById('hud-val-fuel').textContent = `${missileState.fuelMass.toFixed(1)} kg`;
+
+            document.getElementById('status-badge').textContent = 'READY';
+            document.getElementById('status-badge').className = 'px-2 py-0.5 rounded font-bold text-[10px] bg-slate-800 text-slate-300 border border-slate-700 uppercase tracking-wider';
+            document.getElementById('sim-state-text').textContent = 'ARMED';
+            document.getElementById('btn-launch').disabled = false;
+
+            resetCharts();
+
+            update3DPositions();
+            render2DRadar();
+            logEvent('Simulation reset & re-armed for launch.');
+
+            gameLoop();
+        }
+
+        function readSliderInputs() {
+            config.launchAngle = parseFloat(document.getElementById('param-launch-angle').value);
+            config.navN = parseFloat(document.getElementById('param-nav-n').value);
+            config.maxG = parseFloat(document.getElementById('param-max-g').value);
+            config.thrust = parseFloat(document.getElementById('param-thrust').value) * 1000.0;
+            config.burnTime = parseFloat(document.getElementById('param-burn-time').value);
+            config.noiseStd = parseFloat(document.getElementById('param-noise-std').value) * (Math.PI / 180.0);
+            config.filterAlpha = parseFloat(document.getElementById('param-filter-alpha').value);
+            config.targetSpeed = parseFloat(document.getElementById('param-target-speed').value);
+            config.targetAlt = parseFloat(document.getElementById('param-target-alt').value);
+            config.targetManeuver = document.getElementById('param-maneuver-type').value;
+            config.terrainScale = parseFloat(document.getElementById('param-terrain-scale').value);
+        }
+
+        function stepPhysics(dt) {
+            const dx = targetState.x - missileState.x;
+            const dy = targetState.y - missileState.y;
+            const dz = targetState.z - missileState.z;
+            const range = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+            if (range <= 10.0) {
+                isRunning = false;
+                document.getElementById('status-badge').textContent = 'INTERCEPT';
+                document.getElementById('status-badge').className = 'px-2 py-0.5 rounded font-bold text-[10px] bg-hud-green/20 text-hud-green border border-hud-green/60 uppercase tracking-wider text-glow-green';
+                document.getElementById('sim-state-text').textContent = 'TARGET HIT';
+                trigger3DExplosion(targetState.x, targetState.y, targetState.z);
+                logEvent(`🎯 DIRECT INTERCEPT AT t=${simTime.toFixed(2)}s! Final Range: ${range.toFixed(2)}m`);
+                return;
+            }
+
+            const groundH = getTerrainHeight(missileState.x, missileState.z);
+            if (missileState.y <= groundH) {
+                isRunning = false;
+                document.getElementById('status-badge').textContent = 'TERRAIN CRASH';
+                document.getElementById('status-badge').className = 'px-2 py-0.5 rounded font-bold text-[10px] bg-hud-red/20 text-hud-red border border-hud-red/60 uppercase tracking-wider text-glow-red';
+                document.getElementById('sim-state-text').textContent = 'CRASHED';
+                trigger3DExplosion(missileState.x, missileState.y, missileState.z);
+                logEvent(`💥 TERRAIN IMPACT! Missile crashed into terrain at t=${simTime.toFixed(2)}s.`);
+                return;
+            }
+
+            const relVx = targetState.vx - missileState.vx;
+            const relVy = targetState.vy - missileState.vy;
+            const relVz = targetState.vz - missileState.vz;
+
+            const vClosing = -(dx * relVx + dy * relVy + dz * relVz) / range;
+
+            if (vClosing < 0 && range > 1500.0) {
+                isRunning = false;
+                document.getElementById('status-badge').textContent = 'TARGET MISSED';
+                document.getElementById('status-badge').className = 'px-2 py-0.5 rounded font-bold text-[10px] bg-hud-yellow/20 text-hud-yellow border border-hud-yellow/60 uppercase tracking-wider';
+                document.getElementById('sim-state-text').textContent = 'MISSED';
+                logEvent(`❌ MISSILE MISSED TARGET! Target outran intercept cone at t=${simTime.toFixed(2)}s.`);
+                return;
+            }
+
+            const trueLosYaw = Math.atan2(dy, dx);
+            const noiseJitter = (Math.random() - 0.5) * 2.0 * config.noiseStd;
+            const noisyLos = trueLosYaw + noiseJitter;
+
+            let rawLosRate = 0.0;
+            if (seekerPrevNoisyLos !== null) {
+                let diff = noisyLos - seekerPrevNoisyLos;
+                rawLosRate = diff / dt;
+            }
+            seekerPrevNoisyLos = noisyLos;
+
+            seekerFilteredLosRate = (config.filterAlpha * rawLosRate) + ((1.0 - config.filterAlpha) * seekerFilteredLosRate);
+
+            const accelCmd = config.navN * vClosing * seekerFilteredLosRate;
+            const maxAccelMps = config.maxG * 9.81;
+            const saturatedAccel = Math.max(-maxAccelMps, Math.min(maxAccelMps, accelCmd));
+
+            if (Math.abs(accelCmd) > maxAccelMps && Math.random() < 0.05) {
+                logEvent(`⚠️ G-LIMIT SATURATION: Airframe turning at max ${config.maxG}G limit!`);
+            }
+
+            const totalMass = missileState.dryMass + missileState.fuelMass;
+            let currentThrust = 0.0;
+
+            if (missileState.fuelMass > 0.0) {
+                currentThrust = config.thrust;
+                const burnRate = config.fuelMass / config.burnTime;
+                missileState.fuelMass = Math.max(0.0, missileState.fuelMass - burnRate * dt);
+                if (missileState.fuelMass <= 0.0) {
+                    logEvent(`🔥 MOTOR BURNOUT at t=${simTime.toFixed(2)}s. Entering unpowered coasting flight.`);
+                }
+            }
+
+            const rho = 1.225 * Math.exp(-Math.max(0, missileState.y) / 8500.0);
+            const cd = 0.25;
+            const area = 0.0314;
+            const dragForce = 0.5 * rho * (missileState.v * missileState.v) * cd * area;
+
+            const axialAccel = (currentThrust - dragForce) / totalMass - 9.81 * Math.sin(missileState.headingPitch);
+            missileState.v = Math.max(80.0, missileState.v + axialAccel * dt);
+
+            const headingRate = saturatedAccel / missileState.v;
+            missileState.headingPitch += headingRate * dt;
+
+            missileState.vx = missileState.v * Math.cos(missileState.headingPitch);
+            missileState.vy = missileState.v * Math.sin(missileState.headingPitch);
+            missileState.vz = 0.0;
+
+            missileState.x += missileState.vx * dt;
+            missileState.y += missileState.vy * dt;
+            missileState.z += missileState.vz * dt;
+
+            if (config.targetManeuver === 'weave') {
+                targetState.headingPitch = 0.15 * Math.sin(1.2 * simTime);
+            } else if (config.targetManeuver === 'break_turn' && simTime > 3.0) {
+                targetState.headingPitch = 0.25;
+            } else if (config.targetManeuver === 'barrel_roll') {
+                targetState.z += Math.sin(2.0 * simTime) * 30.0;
+            }
+
+            targetState.vx = -config.targetSpeed * Math.cos(targetState.headingPitch);
+            targetState.vy = config.targetSpeed * Math.sin(targetState.headingPitch);
+
+            targetState.x += targetState.vx * dt;
+            targetState.y += targetState.vy * dt;
+
+            simTime += dt;
+            historyData.time.push(simTime);
+            historyData.speed.push(missileState.v);
+            historyData.gLoad.push(Math.abs(saturatedAccel) / 9.81);
+            historyData.range.push(range);
+            historyData.mX.push(missileState.x);
+            historyData.mY.push(missileState.y);
+            historyData.tX.push(targetState.x);
+            historyData.tY.push(targetState.y);
+
+            document.getElementById('hud-sim-time').textContent = formatSimTime(simTime);
+            document.getElementById('hud-val-range').textContent = `${Math.round(range)} m`;
+            document.getElementById('hud-val-vclose').textContent = `${Math.round(vClosing)} m/s`;
+            document.getElementById('hud-val-mspeed').textContent = `${Math.round(missileState.v)} m/s`;
+            document.getElementById('hud-val-gload').textContent = `${(Math.abs(saturatedAccel) / 9.81).toFixed(1)} G`;
+            document.getElementById('hud-val-alt').textContent = `${Math.round(missileState.y)} m`;
+            document.getElementById('hud-val-fuel').textContent = `${missileState.fuelMass.toFixed(1)} kg`;
+        }
+
+        function formatSimTime(sec) {
+            const m = Math.floor(sec / 60);
+            const s = (sec % 60).toFixed(2);
+            return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
+        }
+
+        function gameLoop() {
+            if (isRunning) {
+                const dt = 0.01;
+                for (let i = 0; i < 2; i++) {
+                    stepPhysics(dt);
+                    if (![missileState.x, missileState.y, missileState.z, targetState.x, targetState.y, targetState.z].every(Number.isFinite)) {
+                        console.error('Simulation state became non-finite; stopping physics update.', { missileState, targetState });
+                        isRunning = false;
+                        logEvent('ERROR: invalid simulation coordinates; physics stopped.');
+                    }
+                    if (!isRunning) break;
+                }
+                append3DTrails();
+            }
+
+            if (is3DMode) {
+                update3DPositions();
+                if (renderer3D && scene3D && camera3D) {
+                    renderer3D.render(scene3D, camera3D);
+                }
+            } else {
+                render2DRadar();
+            }
+
+            if (historyData.time.length % 5 === 0) {
+                updateCharts();
+            }
+
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        // CHART.JS INTEGRATION
+        let telemetryChart;
+
+        function initCharts() {
+            const ctx = document.getElementById('telemetry-chart');
+            if (!ctx) return;
+            telemetryChart = new Chart(ctx.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        { label: 'Speed (m/s)', data: [], borderColor: '#00f0ff', borderWidth: 1.5, pointRadius: 0, yAxisID: 'y' },
+                        { label: 'G-Load (G)', data: [], borderColor: '#ffcc00', borderWidth: 1.5, pointRadius: 0, yAxisID: 'y1' },
+                        { label: 'Range (m)', data: [], borderColor: '#00ff66', borderWidth: 1.5, pointRadius: 0, yAxisID: 'y2' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    scales: {
+                        x: { display: false },
+                        y: { position: 'left', grid: { color: 'rgba(30,58,95,0.3)' }, ticks: { color: '#00f0ff', font: { size: 9 } } },
+                        y1: { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#ffcc00', font: { size: 9 } } },
+                        y2: { display: false }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        function resetCharts() {
+            if (!telemetryChart) return;
+            telemetryChart.data.labels = [];
+            telemetryChart.data.datasets[0].data = [];
+            telemetryChart.data.datasets[1].data = [];
+            telemetryChart.data.datasets[2].data = [];
+            telemetryChart.update('none');
+        }
+
+        function updateCharts() {
+            if (!telemetryChart) return;
+            telemetryChart.data.labels = historyData.time;
+            telemetryChart.data.datasets[0].data = historyData.speed;
+            telemetryChart.data.datasets[1].data = historyData.gLoad;
+            telemetryChart.data.datasets[2].data = historyData.range;
+            telemetryChart.update('none');
+        }
+
+        function logEvent(msg) {
+            const box = document.getElementById('event-log-box');
+            if (!box) return;
+            const entry = document.createElement('div');
+            entry.className = 'text-slate-300';
+            entry.innerHTML = `<span class="text-hud-cyan">[${formatSimTime(simTime)}]</span> ${msg}`;
+            box.appendChild(entry);
+            const container = document.getElementById('log-body');
+            if (container) container.scrollTop = container.scrollHeight;
+        }
+
+        // INDEPENDENT COLLAPSIBLE PANEL CONTROLS
+        function setupCollapsiblePanels() {
+            const sidebar = document.getElementById('control-sidebar');
+            const btnSidebarToggle = document.getElementById('btn-toggle-sidebar');
+            const btnSidebarExpand = document.getElementById('btn-expand-sidebar');
+
+            if (btnSidebarToggle && btnSidebarExpand) {
+                btnSidebarToggle.addEventListener('click', () => {
+                    sidebar.classList.add('hidden');
+                    btnSidebarExpand.classList.remove('hidden');
+                    triggerViewportResize();
+                });
+
+                btnSidebarExpand.addEventListener('click', () => {
+                    sidebar.classList.remove('hidden');
+                    btnSidebarExpand.classList.add('hidden');
+                    triggerViewportResize();
+                });
+            }
+
+            const btnToggleCharts = document.getElementById('btn-toggle-charts');
+            const chartsBody = document.getElementById('charts-body');
+            const chartsIcon = document.getElementById('charts-toggle-icon');
+            let chartsCollapsed = false;
+
+            if (btnToggleCharts) {
+                btnToggleCharts.addEventListener('click', () => {
+                    chartsCollapsed = !chartsCollapsed;
+                    if (chartsCollapsed) {
+                        chartsBody.classList.add('hidden');
+                        chartsIcon.className = 'fa-solid fa-chevron-up ml-0.5';
+                    } else {
+                        chartsBody.classList.remove('hidden');
+                        chartsIcon.className = 'fa-solid fa-chevron-down ml-0.5';
+                    }
+                    triggerViewportResize();
+                });
+            }
+
+            const btnToggleLog = document.getElementById('btn-toggle-log');
+            const logBody = document.getElementById('log-body');
+            const logIcon = document.getElementById('log-toggle-icon');
+            let logCollapsed = false;
+
+            if (btnToggleLog) {
+                btnToggleLog.addEventListener('click', () => {
+                    logCollapsed = !logCollapsed;
+                    if (logCollapsed) {
+                        logBody.classList.add('hidden');
+                        logIcon.className = 'fa-solid fa-chevron-up ml-0.5';
+                    } else {
+                        logBody.classList.remove('hidden');
+                        logIcon.className = 'fa-solid fa-chevron-down ml-0.5';
+                    }
+                    triggerViewportResize();
+                });
+            }
+        }
+
+        // UI BINDINGS
+        function setupUIListeners() {
+            document.getElementById('view-mode-3d').addEventListener('click', () => {
+                is3DMode = true;
+                document.getElementById('canvas-3d-container').classList.remove('hidden');
+                document.getElementById('canvas-2d-container').classList.add('hidden');
+                document.getElementById('cam-preset-bar').classList.remove('hidden');
+                document.getElementById('view-mode-3d').className = "px-2 py-0.5 rounded font-bold transition flex items-center bg-hud-cyan/20 text-hud-cyan border border-hud-cyan/50";
+                document.getElementById('view-mode-2d').className = "px-2 py-0.5 rounded font-bold transition flex items-center text-hud-dim hover:text-slate-200";
+                triggerViewportResize();
+            });
+
+            document.getElementById('view-mode-2d').addEventListener('click', () => {
+                is3DMode = false;
+                document.getElementById('canvas-3d-container').classList.add('hidden');
+                document.getElementById('canvas-2d-container').classList.remove('hidden');
+                document.getElementById('cam-preset-bar').classList.add('hidden');
+                document.getElementById('view-mode-2d').className = "px-2 py-0.5 rounded font-bold transition flex items-center bg-hud-cyan/20 text-hud-cyan border border-hud-cyan/50";
+                document.getElementById('view-mode-3d').className = "px-2 py-0.5 rounded font-bold transition flex items-center text-hud-dim hover:text-slate-200";
+                requestAnimationFrame(() => {
+                    resize2DCanvas();
+                    render2DRadar();
+                    if (telemetryChart) telemetryChart.resize();
+                });
+                triggerViewportResize();
+            });
+
+            document.getElementById('btn-toggle-overlays').addEventListener('click', () => {
+                showOverlays = !showOverlays;
+                const btn = document.getElementById('btn-toggle-overlays');
+                if (showOverlays) {
+                    btn.innerHTML = `<i class="fa-solid fa-eye mr-1"></i> OVERLAYS: ON`;
+                    btn.className = "px-2 py-0.5 rounded font-bold transition flex items-center bg-hud-green/20 text-hud-green border border-hud-green/50 hover:bg-hud-green/30";
+                } else {
+                    btn.innerHTML = `<i class="fa-solid fa-eye-slash mr-1"></i> OVERLAYS: OFF`;
+                    btn.className = "px-2 py-0.5 rounded font-bold transition flex items-center bg-slate-800 text-slate-400 border border-slate-700 hover:text-slate-200";
+                }
+                update3DOverlaysVisibility();
+            });
+
+            document.getElementById('btn-fullscreen').addEventListener('click', () => {
+                const elem = document.documentElement;
+                if (!document.fullscreenElement) {
+                    if (elem.requestFullscreen) elem.requestFullscreen();
+                    else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+                } else {
+                    if (document.exitFullscreen) document.exitFullscreen();
+                }
+            });
+
+            document.querySelectorAll('.cam-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.cam-btn').forEach(b => b.className = "cam-btn px-2 py-0.5 rounded bg-hud-panel text-slate-300 hover:bg-hud-cyan/20");
+                    e.target.className = "cam-btn px-2 py-0.5 rounded bg-hud-cyan/20 text-hud-cyan border border-hud-cyan/50 font-bold";
+                    currentCamMode = e.target.dataset.cam;
+
+                    if (currentCamMode === 'orbit') {
+                        camera3D.position.set(-2000, 2500, 4500);
+                        controls3D.target.set(3000, 2000, 0);
+                    }
+                });
+            });
+
+            document.getElementById('btn-launch').addEventListener('click', () => {
+                if (!isRunning) {
+                    isRunning = true;
+                    document.getElementById('status-badge').textContent = 'ENGAGED';
+                    document.getElementById('status-badge').className = 'px-2 py-0.5 rounded font-bold text-[10px] bg-hud-cyan/20 text-hud-cyan border border-hud-cyan/60 uppercase tracking-wider text-glow-cyan';
+                    document.getElementById('sim-state-text').textContent = 'ENGAGED';
+                    logEvent('🚀 MISSILE LAUNCH EXECUTION INITIATED!');
+                }
+            });
+
+            document.getElementById('btn-reset').addEventListener('click', resetSimulation);
+            document.getElementById('reset-defaults-btn').addEventListener('click', () => {
+                config = {
+                    navN: 4.0, maxG: 30.0, thrust: 25000.0, burnTime: 7.5,
+                    dryMass: 110.0, fuelMass: 51.0, noiseStd: 0.30 * (Math.PI / 180.0),
+                    filterAlpha: 0.15, launchAngle: 35.0, initSpeed: 600.0, terrainScale: 1.0,
+                    targetSpeed: 320.0, targetAlt: 5000.0, targetManeuver: 'weave'
+                };
+                document.getElementById('missile-name-tag').textContent = 'AIM-120D AMRAAM';
+                applyConfigToSliders();
+                resetSimulation();
+            });
+
+            bindSlider('param-launch-angle', 'val-launch-angle', ' °', 1);
+            bindSlider('param-nav-n', 'val-nav-n', '', 1);
+            bindSlider('param-max-g', 'val-max-g', ' G', 0);
+            bindSlider('param-thrust', 'val-thrust', ' kN', 1);
+            bindSlider('param-burn-time', 'val-burn-time', ' s', 1);
+            bindSlider('param-noise-std', 'val-noise-std', ' °', 2);
+            bindSlider('param-filter-alpha', 'val-filter-alpha', '', 2);
+            bindSlider('param-target-speed', 'val-target-speed', ' m/s', 0);
+            bindSlider('param-target-alt', 'val-target-alt', ' m', 0);
+
+            const terrainInput = document.getElementById('param-terrain-scale');
+            if (terrainInput) {
+                terrainInput.addEventListener('input', () => {
+                    const val = parseFloat(terrainInput.value);
+                    document.getElementById('val-terrain-scale').textContent = `${val.toFixed(1)} x`;
+                    readSliderInputs();
+                    updateTerrainMesh();
+                });
+            }
+
+            document.getElementById('btn-clear-log').addEventListener('click', () => {
+                document.getElementById('event-log-box').innerHTML = '';
+            });
+
+            setupCollapsiblePanels();
+        }
+
+        function bindSlider(id, displayId, unit, decimals) {
+            const input = document.getElementById(id);
+            if (!input) return;
+            input.addEventListener('input', () => {
+                const val = parseFloat(input.value);
+                document.getElementById(displayId).textContent = `${val.toFixed(decimals)}${unit}`;
+                readSliderInputs();
+            });
+        }
+
+        function applyConfigToSliders() {
+            document.getElementById('param-launch-angle').value = config.launchAngle || 35.0;
+            document.getElementById('val-launch-angle').textContent = `${(config.launchAngle || 35.0).toFixed(1)} °`;
+
+            document.getElementById('param-nav-n').value = config.navN;
+            document.getElementById('val-nav-n').textContent = config.navN.toFixed(1);
+
+            document.getElementById('param-max-g').value = config.maxG;
+            document.getElementById('val-max-g').textContent = `${config.maxG.toFixed(0)} G`;
+
+            document.getElementById('param-thrust').value = config.thrust / 1000.0;
+            document.getElementById('val-thrust').textContent = `${(config.thrust / 1000.0).toFixed(1)} kN`;
+
+            document.getElementById('param-burn-time').value = config.burnTime;
+            document.getElementById('val-burn-time').textContent = `${config.burnTime.toFixed(1)} s`;
+
+            const degNoise = config.noiseStd * (180.0 / Math.PI);
+            document.getElementById('param-noise-std').value = degNoise;
+            document.getElementById('val-noise-std').textContent = `${degNoise.toFixed(2)} °`;
+
+            document.getElementById('param-filter-alpha').value = config.filterAlpha;
+            document.getElementById('val-filter-alpha').textContent = config.filterAlpha.toFixed(2);
+
+            document.getElementById('param-terrain-scale').value = config.terrainScale || 1.0;
+            document.getElementById('val-terrain-scale').textContent = `${(config.terrainScale || 1.0).toFixed(1)} x`;
+        }
+
+        window.onload = function () {
+            renderArsenalCatalog();
+            setupArsenalSearch();
+
+            init3DScene();
+            engineInitialized = true;
+            init2DRadar();
+            initCharts();
+            setupUIListeners();
+            resetSimulation();
+
+            setTimeout(triggerViewportResize, 150);
+        };
+    </script>
+</body>
+</html>
